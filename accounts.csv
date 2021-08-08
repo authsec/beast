@@ -1,0 +1,8 @@
+# Comments are allowed if you want to link to some server settings
+"from_host_username","from_host_password","to_host_username","to_host_password"
+"j@example.org","example_passwd"
+"g@example.org","example_from_passwd","g_new@example.net","example_to_passwd"
+"superdud@example.com","example_from_passwd","superdude@example.net","example_to_dude_passwd"
+"megaman@example.net","example_from_passwd","mega@example.com"
+"louis.megaman@example.net","example_from_passwd","mega@example.com"
+"Pippi.Langstrumpf@example.net","example_from_passwd","","new_to_passwd"
