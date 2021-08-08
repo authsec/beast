@@ -27,7 +27,7 @@ BEAST is willing to help you if you ask nicely.
 usage: beast.py [-h] --from-host SRC_HOST --to-host DST_HOST [--dry-run]
                 [--accounts-csv-file-name ACCOUNTS_CSV_FILE_NAME] [-e] [-p]
                 [-o] [--from-host-port SRC_PORT] [--to-host-port SRC_PORT]
-                [--sync-format-string SYNC_FORMAT_STRING]
+                [--sync-format-string SYNC_FORMAT_STRING] [-l]
 
 Bulk Email Account Synchronization Tool (BEAST)
 
@@ -61,9 +61,13 @@ optional arguments:
                         This flag lets you specify a custom imapsync format
                         string, while still being able to use the bulk sync
                         mechanism.
+  -l, --create-imapsync-logs
+                        Write the imapsync logs to file for later review
 ```
 
 # Example Usage
+
+NOTE: If you don't want the log messages to be visible on the screen but instead be written to a log file, use the `-l` switch.
 
 The below command will e.g. use the `accounts_org1.csv` in your current directory to assemble the sync commands that will be executed. 
 

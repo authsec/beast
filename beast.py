@@ -4,8 +4,12 @@ import sys, argparse
 import os
 import csv
 import time
+import subprocess
+from datetime import datetime
+import concurrent.futures
 
 DEFAULT_SYNC_FORMAT_STRING="imapsync --nosyncacls --subscribe --syncinternaldates --fast --host1 \'{from_host}\' --port1 {from_host_port} --user1 \'{account.host1_username}\' --password1 \'{account.host1_password}\' --ssl1 --host2 \'{to_host}\' --port2 {to_host_port} --user2 \'{account.host2_username}\' --password2 \'{account.host2_password}\' --ssl2 --delete2"
+BEAST_SYNC_LOG_DIR = 'beast_sync_logs'
 
 class SmartFormatter(argparse.HelpFormatter):
     def _split_lines(self, text, width):
@@ -15,21 +19,25 @@ class SmartFormatter(argparse.HelpFormatter):
         return argparse.HelpFormatter._split_lines(self, text, width)
 
 class StatsEntry:
-    def __init__(self, host1, host2, host1_username, host2_username, start_time, end_time):
+    def __init__(self, host1, host2, host1_username, host2_username, start_time, end_time, sync_process):
         self.host1 = host1
         self.host2 = host2
         self.host1_username = host1_username
         self.host2_username = host2_username
         self.start_time = start_time
         self.end_time = end_time
+        self.sync_process = sync_process
 
 class Stats:
     @staticmethod
     def print_summary(stats_entries):
-        print("Migrated Account")
-        for stats_entry in stats_entries:
-            print(f"\t{stats_entry.host1}::{stats_entry.host1_username} to {stats_entry.host2}::{stats_entry.host2_username} in {stats_entry.end_time - stats_entry.start_time} seconds")
+        output_format = "{stats_entry.host1}::{stats_entry.host1_username:>32} ==> {stats_entry.host2:>24}::{stats_entry.host2_username:>32} in {round(stats_entry.end_time - stats_entry.start_time, 5):>6} seconds"
 
+        for stats_entry in [stats_entry for stats_entry in stats_entries if stats_entry.sync_process.returncode is not 0]:
+            print(eval(f'f"""[    SYNC_FAILED] {output_format}"""'))
+
+        for stats_entry in [stats_entry for stats_entry in stats_entries if stats_entry.sync_process.returncode is 0]:
+            print(eval(f'f"""[SYNC_SUCCESSFUL] {output_format}"""'))
 
 class ExampleFileAction(argparse.Action):
     def __call__(self, parser, namespace, values, option_string=None):
@@ -102,14 +110,34 @@ def assemble_sync_command(sync_format_string, account, from_host, from_host_port
     return command
 
 stats_entries = []
-def sync_account(sync_format_string, account, from_host, from_host_port, to_host, to_host_port,
-                 dry_run):
+def sync_account(sync_format_string, account, from_host, from_host_port, to_host, to_host_port, dry_run, create_imapsync_logs):
     sync_command = assemble_sync_command(sync_format_string, account, from_host, from_host_port, to_host, to_host_port, dry_run)
 
     start_time = time.perf_counter()
-    print(f"[{time.asctime()}] Synchronizing Account {account.host1_username}")
-    os.system(sync_command)
-    stats_entries.append(StatsEntry(from_host, to_host, account.host1_username, account.host2_username, start_time, time.perf_counter()))
+    
+    if create_imapsync_logs:
+        if not os.path.exists(BEAST_SYNC_LOG_DIR):
+            os.makedirs(BEAST_SYNC_LOG_DIR)
+
+        timestamp = datetime.now().strftime("%Y-%m-%d-%H:%M:%S")
+        with open(BEAST_SYNC_LOG_DIR + "/" + timestamp + "-" + account.host1_username, 'w') as log_file:
+            print(f"[{time.asctime()}] Synchronizing Account {account.host1_username}")
+            sync_process = subprocess.run(sync_command, shell=True, stdout=log_file, stderr=log_file)
+    else:
+        sync_process = subprocess.run(sync_command, shell=True)
+  
+    return StatsEntry(from_host, to_host, account.host1_username, account.host2_username, start_time, time.perf_counter(), sync_process)
+
+def sync_accounts(sync_format_string, accounts, from_host, from_host_port, to_host, to_host_port, dry_run, create_imapsync_logs):
+    with concurrent.futures.ProcessPoolExecutor() as executor:
+        results = []
+
+        for account in accounts:
+            results.append(executor.submit(sync_account, sync_format_string, account, from_host, from_host_port, to_host, to_host_port, dry_run, create_imapsync_logs))
+
+        for f in concurrent.futures.as_completed(results):
+            # Collect returned results
+            stats_entries.append(f.result())
 
 def main(args):
     from_host = args.from_host
@@ -119,6 +147,7 @@ def main(args):
     dry_run = args.dry_run
     accounts_csv_file_name = args.accounts_csv_file_name
     sync_format_string = args.sync_format_string
+    create_imapsync_logs = args.create_imapsync_logs
 
     accounts = Account.read_accounts(accounts_csv_file_name)
 
@@ -126,10 +155,13 @@ def main(args):
         for account in accounts:
             print(assemble_sync_command(sync_format_string, account, from_host, from_host_port, to_host, to_host_port, dry_run))
     else:
-        for account in accounts:
-            sync_account(sync_format_string, account, from_host, from_host_port, to_host, to_host_port,dry_run)
-        
+
+        global_sync_start_time = time.perf_counter()
+        sync_accounts(sync_format_string, accounts, from_host, from_host_port, to_host, to_host_port, dry_run, create_imapsync_logs)
+        global_sync_end_time = time.perf_counter()
+
         Stats.print_summary(stats_entries)
+        print(f"\nTotal sync duration: {round(global_sync_end_time - global_sync_start_time, 2)} seconds")
     
 if __name__ == '__main__':
     parser = BEASTParser(description="Bulk Email Account Synchronization Tool (BEAST)", formatter_class=SmartFormatter)
@@ -143,6 +175,7 @@ if __name__ == '__main__':
     parser.add_argument("--from-host-port",metavar='SRC_PORT',type=int,default=993,help="The port of the source host where the IMAP service is running")
     parser.add_argument("--to-host-port",metavar='SRC_PORT',type=int,default=993,help="The port of the destination host to where you want to sync to")
     parser.add_argument("--sync-format-string",default=DEFAULT_SYNC_FORMAT_STRING, help="This flag lets you specify a custom imapsync format string, while still being able to use the bulk sync mechanism.")
+    parser.add_argument("-l","--create-imapsync-logs",action="store_true",help="Write the imapsync logs to file for later review")
 
     args = parser.parse_args()
 
@@ -151,5 +184,3 @@ if __name__ == '__main__':
         sys.exit(1)
 
     main(args)
-
-
