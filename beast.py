@@ -8,7 +8,8 @@ import subprocess
 from datetime import datetime
 import concurrent.futures
 
-DEFAULT_SYNC_FORMAT_STRING="imapsync --nosyncacls --subscribe --syncinternaldates --fast --host1 \'{from_host}\' --port1 {from_host_port} --user1 \'{account.host1_username}\' --password1 \'{account.host1_password}\' --ssl1 --host2 \'{to_host}\' --port2 {to_host_port} --user2 \'{account.host2_username}\' --password2 \'{account.host2_password}\' --ssl2 --delete2"
+DEFAULT_SYNC_FORMAT_STRING="imapsync --nosyncacls --subscribe --syncinternaldates --fast --host1 \'{from_host}\' --port1 {from_host_port} --user1 \'{account.host1_username}\' --password1 \'{account.host1_password}\' --ssl1 --host2 \'{to_host}\' --port2 {to_host_port} --user2 \'{account.host2_username}\' --password2 \'{account.host2_password}\' --ssl2"
+
 BEAST_SYNC_LOG_DIR = 'beast_sync_logs'
 
 class SmartFormatter(argparse.HelpFormatter):
